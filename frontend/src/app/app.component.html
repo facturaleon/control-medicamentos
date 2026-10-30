@@ -1,0 +1,185 @@
+<main class="page">
+  <header class="header">
+    <div>
+      <p class="eyebrow">ESTABLECIMIENTOS DE SALUD</p>
+      <h1>Control de medicamentos</h1>
+      <p class="subtitle">Registro mensual de ingresos y egresos</p>
+    </div>
+    <span class="pill">Sistema de reportes</span>
+  </header>
+
+  <div *ngIf="mensaje" class="alert" [class.alert-error]="tipoMensaje === 'error'"
+    [class.alert-ok]="tipoMensaje === 'ok'" role="status">
+    {{ mensaje }}
+    <button class="alert-close" type="button" (click)="mensaje = ''" aria-label="Cerrar mensaje">×</button>
+  </div>
+
+  <section class="panel">
+    <div class="section-heading">
+      <div>
+        <h2>Nuevo reporte</h2>
+        <p>Complete el establecimiento y el periodo, luego agregue los medicamentos.</p>
+      </div>
+      <span class="required-note">* Campos obligatorios</span>
+    </div>
+
+    <form (ngSubmit)="guardar()">
+      <div class="form-grid">
+        <div class="field">
+          <label for="unicodigo">UNICODIGO <span>*</span></label>
+          <input id="unicodigo" name="unicodigo" [(ngModel)]="unicodigo" (ngModelChange)="cambioContexto()"
+            maxlength="30" placeholder="Ej. 1701500001" required>
+        </div>
+        <div class="field">
+          <label for="periodo">Mes y año del reporte <span>*</span></label>
+          <input id="periodo" name="periodo" type="month" [(ngModel)]="periodo" (ngModelChange)="cambioContexto()"
+            [min]="minimo" [max]="maximo" required>
+          <small>Desde julio de 2025 hasta {{ maximo }}.</small>
+        </div>
+      </div>
+
+      <div class="subsection">
+        <h3>Medicamentos</h3>
+        <p>El stock inicial en julio de 2025 es cero. Los siguientes meses usan el saldo acumulado anterior.</p>
+        <div class="medicine-grid">
+          <div class="field medicine-name">
+            <label for="medicamento">Medicamento <span>*</span></label>
+            <select id="medicamento" name="medicamentoId" [(ngModel)]="medicamentoId"
+              (ngModelChange)="consultarStock()">
+              <option [ngValue]="null">Seleccione un medicamento</option>
+              <option *ngFor="let m of medicamentos" [ngValue]="m.id">{{ m.nombre }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ingreso">Ingreso</label>
+            <input id="ingreso" name="ingreso" type="number" min="0" step="1" [(ngModel)]="ingreso">
+          </div>
+          <div class="field">
+            <label for="egreso">Egreso</label>
+            <input id="egreso" name="egreso" type="number" min="0" step="1" [(ngModel)]="egreso">
+          </div>
+          <div class="field add-field">
+            <label>&nbsp;</label>
+            <button type="button" class="button button-secondary" (click)="agregarMedicamento()">
+              <span aria-hidden="true">+</span> Agregar
+            </button>
+          </div>
+        </div>
+        <!-- Stock de medicamentos -->
+        <div class="stock-summary" *ngIf="medicamentoId !== null && unicodigo.trim() && periodo">
+
+          <div class="stock-card">
+            <span>Stock anterior</span>
+            <strong>{{ stockAnteriorFormulario }}</strong>
+          </div>
+
+          <div class="stock-card">
+            <span>Ingreso</span>
+            <strong>{{ ingreso || 0 }}</strong>
+          </div>
+
+          <div class="stock-card">
+            <span>Disponible</span>
+            <strong>{{ stockDisponible() }}</strong>
+          </div>
+
+          <div class="stock-card">
+            <span>Stock final estimado</span>
+            <strong [class.stock-error]="egreso > stockDisponible()">
+              {{ stockDisponible() - (egreso || 0) }}
+            </strong>
+          </div>
+
+          <p *ngIf="consultandoStock">Consultando stock...</p>
+
+          <p class="stock-error" *ngIf="!consultandoStock && egreso > stockDisponible()">
+            El egreso supera el stock disponible.
+          </p>
+        </div>
+      </div>
+
+      <div class="table-wrap" *ngIf="detalles.length > 0">
+        <table>
+          <thead>
+            <tr>
+              <th>Medicamento</th>
+              <th>Stock anterior</th>
+              <th>Ingreso</th>
+              <th>Egreso</th>
+              <th>Stock final</th>
+              <th></th>
+            </tr>
+          </thead>
+
+          <tbody>
+            <tr *ngFor="let d of detalles; let i = index">
+              <td>{{ d.nombre }}</td>
+              <td>{{ d.stockAnterior }}</td>
+              <td>{{ d.ingreso }}</td>
+              <td>{{ d.egreso }}</td>
+              <td>
+                <strong>{{ stockFinal(d.ingreso, d.egreso, d.stockAnterior) }}</strong>
+              </td>
+              <td class="action-cell">
+                <button type="button" class="link-danger" (click)="quitarMedicamento(i)">
+                  Quitar
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="empty-inline" *ngIf="detalles.length === 0">
+        Todavía no ha agregado medicamentos al reporte.
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="button button-primary" [disabled]="cargando">
+          {{ cargando ? 'Guardando...' : 'Guardar reporte' }}
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="section-heading">
+      <div>
+        <h2>Reportes registrados</h2>
+        <p>Listado de reportes guardados en el sistema.</p>
+      </div>
+      <span class="count">{{ reportes.length }} reportes</span>
+    </div>
+
+    <div class="table-wrap" *ngIf="reportes.length > 0; else sinReportes">
+      <table>
+        <thead>
+          <tr>
+            <th>UNICODIGO</th>
+            <th>Periodo</th>
+            <th>Estado</th>
+            <th class="right">Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let r of reportes; trackBy: trackReporte">
+            <td class="code">{{ r.unicodigo }}</td>
+            <td>{{ nombreMes(r.mes) }} {{ r.anio }}</td>
+            <td><span class="status">{{ r.estado }}</span></td>
+            <td class="action-cell right">
+              <button type="button" class="link-danger" (click)="eliminar(r.id)">Eliminar</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <ng-template #sinReportes>
+      <div class="empty-state">
+        <div class="empty-icon">▤</div>
+        <h3>No hay reportes registrados</h3>
+        <p>Cuando guarde el primer reporte, aparecerá aquí.</p>
+      </div>
+    </ng-template>
+  </section>
+
+  <footer>Control mensual de medicamentos · Prueba técnica</footer>
+</main>
